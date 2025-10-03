@@ -7,4 +7,3 @@ ta
 tqdm
 requests
 pytz
-
