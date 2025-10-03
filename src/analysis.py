@@ -1,37 +1,21 @@
-from typing import List
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
-import numpy as np
+import nltk
+from nltk.sentiment import SentimentIntensityAnalyzer
 
-_sia = None
-def get_sia():
-    global _sia
-    if _sia is None:
-        _sia = SentimentIntensityAnalyzer()
-    return _sia
+# Ensure VADER lexicon is available on new machines/containers (Railway, etc.)
+try:
+    nltk.data.find("sentiment/vader_lexicon.zip")
+except LookupError:
+    nltk.download("vader_lexicon")
 
-def sentiment_score_texts(texts: List[str]) -> float:
-    """Returns a normalized sentiment score in range [-1, 1]."""
+_sia = SentimentIntensityAnalyzer()
+
+def sentiment_from_texts(texts):
     if not texts:
         return 0.0
-    sia = get_sia()
-    scores = []
+    vals = []
     for t in texts:
-        try:
-            s = sia.polarity_scores(t or "")
-            scores.append(s.get("compound", 0.0))
-        except Exception:
-            scores.append(0.0)
-    if not scores:
-        return 0.0
-    return float(np.clip(np.mean(scores), -1.0, 1.0))
-
-def normalize_value(x, lo, hi):
-    if x is None:
-        return 0.0
-    try:
-        x = float(x)
-    except Exception:
-        return 0.0
-    if hi == lo:
-        return 0.0
-    return float(np.clip((x - lo) / (hi - lo), 0, 1))
+        if not t:
+            continue
+        s = _sia.polarity_scores(str(t))
+        vals.append(s.get("compound", 0.0))
+    return sum(vals) / len(vals) if vals else 0.0
