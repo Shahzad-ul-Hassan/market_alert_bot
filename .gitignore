@@ -1,1 +1,21 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+
+# Environment variables
 .env
+
+# macOS system files
+.DS_Store
+
+# Logs
+*.log
+
+# Jupyter Notebooks checkpoints (اگر کبھی استعمال کریں)
+.ipynb_checkpoints
+
