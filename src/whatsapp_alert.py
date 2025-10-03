@@ -1,27 +1,34 @@
 # src/whatsapp_alert.py
-
 import os
-from twilio.rest import Client
 from dotenv import load_dotenv
+from twilio.rest import Client
 
 load_dotenv()
 
-# --- sanitize: strip() removes hidden spaces/newlines ---
-ACCOUNT_SID   = (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
-AUTH_TOKEN    = (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
-WHATSAPP_FROM = (os.getenv("WHATSAPP_FROM") or "").strip()
-WHATSAPP_TO   = (os.getenv("WHATSAPP_TO") or "").strip()
+def _clean(v): return (v or "").strip()
+
+ACCOUNT_SID      = _clean(os.getenv("TWILIO_ACCOUNT_SID"))
+AUTH_TOKEN       = _clean(os.getenv("TWILIO_AUTH_TOKEN"))
+API_KEY          = _clean(os.getenv("TWILIO_API_KEY"))
+API_SECRET       = _clean(os.getenv("TWILIO_API_SECRET"))
+WHATSAPP_FROM    = _clean(os.getenv("WHATSAPP_FROM"))
+WHATSAPP_TO      = _clean(os.getenv("WHATSAPP_TO"))
+
+def _get_client():
+    # Prefer API Key/Secret if provided, else fall back to SID/Token
+    if API_KEY and API_SECRET and ACCOUNT_SID:
+        return Client(API_KEY, API_SECRET, ACCOUNT_SID)
+    return Client(ACCOUNT_SID, AUTH_TOKEN)
 
 def verify_twilio_auth():
-    # safe print for logs (sensitive hide)
     print(
-        "Twilio SID present:", bool(ACCOUNT_SID),
-        "SID endswith:", (ACCOUNT_SID[-4:] if ACCOUNT_SID else None),
-        "| FROM:", WHATSAPP_FROM, "| TO:", WHATSAPP_TO
+        "Twilio creds → SID set:", bool(ACCOUNT_SID),
+        "SID last4:", (ACCOUNT_SID[-4:] if ACCOUNT_SID else None),
+        "| FROM:", WHATSAPP_FROM, "| TO:", WHATSAPP_TO,
+        "| Using:", "API_KEY" if API_KEY else "AUTH_TOKEN"
     )
     try:
-        # simple auth probe
-        Client(ACCOUNT_SID, AUTH_TOKEN).api.accounts(ACCOUNT_SID).fetch()
+        _get_client().api.accounts(ACCOUNT_SID).fetch()
         print("✅ Twilio auth OK")
         return True
     except Exception as e:
@@ -30,13 +37,12 @@ def verify_twilio_auth():
 
 def send_whatsapp_alert(message_text: str):
     if not verify_twilio_auth():
-        print("⚠️ Not sending message due to failed auth.")
+        print("⚠️ Not sending due to failed auth.")
         return
     try:
-        client = Client(ACCOUNT_SID, AUTH_TOKEN)
-        msg = client.messages.create(
-            from_=WHATSAPP_FROM,  # must be whatsapp:+14155238886 (sandbox)
-            to=WHATSAPP_TO,       # must be your joined number, e.g., whatsapp:+923076551525
+        msg = _get_client().messages.create(
+            from_=WHATSAPP_FROM,  # must be 'whatsapp:+14155238886' for sandbox
+            to=WHATSAPP_TO,       # must be your joined number like 'whatsapp:+92300...'
             body=message_text,
         )
         print("✅ WhatsApp Message Sent:", msg.sid)
