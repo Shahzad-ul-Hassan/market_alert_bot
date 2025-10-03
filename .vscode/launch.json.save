@@ -1,0 +1,52 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Local Test Bot (No Telegram)",
+      "type": "python",
+      "request": "launch",
+      "program": "-m",
+      "args": [
+        "src.main",
+        "--symbols", "BTC-USD,ETH-USD",
+        "--once",
+        "--no-telegram"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}
+
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Local Test Bot (No Telegram)",
+      "type": "python",
+      "request": "launch",
+      "program": "-m",
+      "args": [
+        "src.main",
+        "--symbols", "BTC-USD,ETH-USD",
+        "--once",
+        "--no-telegram"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Live Bot (With Telegram)",
+      "type": "python",
+      "request": "launch",
+      "program": "-m",
+      "args": [
+        "src.main",
+        "--symbols", "BTC-USD,ETH-USD"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}
+

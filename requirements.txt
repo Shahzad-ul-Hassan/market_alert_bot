@@ -1,0 +1,9 @@
+pandas
+numpy
+yfinance>=0.2.40
+ta
+requests
+python-dotenv
+APScheduler
+nltk
+tqdm
