@@ -36,7 +36,7 @@ def send_whatsapp_alert(message_text: str):
         client = Client(ACCOUNT_SID, AUTH_TOKEN)
         msg = client.messages.create(
             from_=WHATSAPP_FROM,  # must be whatsapp:+14155238886 (sandbox)
-            to=WHATSAPP_TO,       # must be your joined number, e.g., whatsapp:+92300xxxxxxx
+            to=WHATSAPP_TO,       # must be your joined number, e.g., whatsapp:+923076551525
             body=message_text,
         )
         print("✅ WhatsApp Message Sent:", msg.sid)
