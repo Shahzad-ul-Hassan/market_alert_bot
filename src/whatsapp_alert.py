@@ -1,31 +1,44 @@
+# src/whatsapp_alert.py
+
 import os
 from twilio.rest import Client
 from dotenv import load_dotenv
 
-# .env سے environment variables لوڈ کریں
 load_dotenv()
 
-# Twilio credentials اور WhatsApp numbers
-ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-WHATSAPP_FROM = os.getenv("WHATSAPP_FROM", "whatsapp:+14155238886")
-WHATSAPP_TO = os.getenv("WHATSAPP_TO")
+# --- sanitize: strip() removes hidden spaces/newlines ---
+ACCOUNT_SID   = (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
+AUTH_TOKEN    = (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
+WHATSAPP_FROM = (os.getenv("WHATSAPP_FROM") or "").strip()
+WHATSAPP_TO   = (os.getenv("WHATSAPP_TO") or "").strip()
+
+def verify_twilio_auth():
+    # safe print for logs (sensitive hide)
+    print(
+        "Twilio SID present:", bool(ACCOUNT_SID),
+        "SID endswith:", (ACCOUNT_SID[-4:] if ACCOUNT_SID else None),
+        "| FROM:", WHATSAPP_FROM, "| TO:", WHATSAPP_TO
+    )
+    try:
+        # simple auth probe
+        Client(ACCOUNT_SID, AUTH_TOKEN).api.accounts(ACCOUNT_SID).fetch()
+        print("✅ Twilio auth OK")
+        return True
+    except Exception as e:
+        print("❌ Twilio auth FAILED:", str(e))
+        return False
 
 def send_whatsapp_alert(message_text: str):
-    if not (ACCOUNT_SID and AUTH_TOKEN and WHATSAPP_TO):
-        print("⚠️ WhatsApp not configured correctly (SID/TOKEN/TO missing).")
+    if not verify_twilio_auth():
+        print("⚠️ Not sending message due to failed auth.")
         return
-
-    client = Client(ACCOUNT_SID, AUTH_TOKEN)
     try:
-        message = client.messages.create(
-            from_=WHATSAPP_FROM,
+        client = Client(ACCOUNT_SID, AUTH_TOKEN)
+        msg = client.messages.create(
+            from_=WHATSAPP_FROM,  # must be whatsapp:+14155238886 (sandbox)
+            to=WHATSAPP_TO,       # must be your joined number, e.g., whatsapp:+92300xxxxxxx
             body=message_text,
-            to=WHATSAPP_TO
         )
-        print("✅ WhatsApp Message Sent! SID:", message.sid)
+        print("✅ WhatsApp Message Sent:", msg.sid)
     except Exception as e:
         print("❌ Error sending WhatsApp message:", str(e))
-
-if __name__ == "__main__":
-    send_whatsapp_alert("🚀 Test: WhatsApp alert from Market Bot!")
