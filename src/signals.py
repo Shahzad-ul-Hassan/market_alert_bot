@@ -285,3 +285,29 @@ def decision_from_score(score: float) -> str:
             return "🟡 *WAIT* — Market uncertain, stay cautious ⚖️"
     except Exception as e:
         return f"⚠️ Decision error: {e}"
+# ───────────────────────────────
+# ⚖️ RISK LEVEL ANALYSIS SECTION
+# ───────────────────────────────
+def risk_level_from_factors(tech_signal: float, sentiment: float, fundamentals: float) -> str:
+    """
+    Evaluates combined risk level using volatility and sentiment balance.
+    Returns human-readable string with emojis for WhatsApp alerts.
+    """
+    try:
+        # Volatility indicator (difference in signals)
+        volatility = abs(tech_signal - fundamentals)
+
+        # Sentiment contribution
+        mood = abs(sentiment)
+
+        # Risk score combines volatility + sentiment
+        risk_score = (volatility * 0.6) + (mood * 0.4)
+
+        if risk_score < 0.25:
+            return "🔹 *Low Risk* — Market relatively stable 🧊"
+        elif risk_score < 0.55:
+            return "🟠 *Medium Risk* — Moderate fluctuations ⚙️"
+        else:
+            return "🔴 *High Risk* — Volatile market ahead ⚡️"
+    except Exception as e:
+        return f"⚠️ Risk calculation error: {e}"
