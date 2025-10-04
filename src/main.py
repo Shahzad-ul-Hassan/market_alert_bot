@@ -1,51 +1,46 @@
-import os
-from typing import List, Optional
-from . import data_sources as ds
-from . import signals as sg
-from . import analysis as an
-from .whatsapp_alert import send_whatsapp_alert
-from .logger import info, warn, err
-
-# --- Minimum confidence threshold (default 70%)
-MIN_CONF = float(os.getenv("CONFIDENCE_MIN", "70"))
-
-# ─────────────────────────────────────────────
-# Analyze one symbol completely
-# ─────────────────────────────────────────────
 def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
     """
     Analyze one symbol and return tuple:
       (pretty_message, decision_text, confidence_pct)
+    Includes Decision, Risk, Trend, Confidence, and ATR-based Trade Levels.
     """
     info(f"Analyzing {symbol}...")
 
-    # 1️⃣ Fetch price data
+    # 1) Price data
     df = ds.fetch_price_history(symbol)
     if df is None:
         warn(f"No price data for {symbol}. Skipping.")
         return None
 
-    # 2️⃣ Technical indicators
+    # 2) Technicals
     tech = sg.compute_technicals(df)
     tech_signal = float(tech.get("signal", 0.0))
     rsi = tech.get("rsi", None)
     macd_hist = tech.get("macd_hist", 0.0)
     sma_trend = tech.get("sma_trend", 0.0)
 
-    # 3️⃣ Sentiment
+    # 3) Sentiment
     sentiment = an.sentiment_from_texts(an.get_recent_news_and_tweets(symbol))
 
-    # 4️⃣ Fundamentals
+    # 4) Fundamentals
     fund = float(sg.fundamentals_to_score(symbol))
 
-    # 5️⃣ Aggregate → Decision
-    score = sg.aggregate_scores(tech_signal, sentiment, fund)
+    # 5) Aggregate → Decision
+    score = sg.aggregate_scores(
+        tech_signal=tech_signal,
+        sentiment=sentiment,
+        fundamentals=fund,
+    )
     decision = sg.decision_from_score(score)
 
-    # 6️⃣ Risk
-    risk = sg.risk_level_from_factors(tech_signal, sentiment, fund)
+    # 6) Risk
+    risk = sg.risk_level_from_factors(
+        tech_signal=tech_signal,
+        sentiment=sentiment,
+        fundamentals=fund,
+    )
 
-    # 7️⃣ Trend Summary
+    # 7) Trend Summary
     try:
         if sma_trend > 0.02 and macd_hist > 0:
             trend_summary = "📊 *Trend:* Uptrend forming — buyers in control 💪"
@@ -60,7 +55,7 @@ def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
         trend_summary = f"⚠️ Trend analysis error: {e}"
         trend_agree = 0
 
-    # 8️⃣ Confidence Calculation
+    # 8) Confidence % (0–100)
     try:
         strength = min(1.0, abs(score))
         base_conf = 60.0 * strength
@@ -69,13 +64,25 @@ def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
         sent_bonus = 15.0 * (sent_align * min(1.0, abs(sentiment)))
         rows = len(df)
         data_bonus = 10.0 if rows >= 120 else (5.0 if rows >= 60 else 0.0)
-        confidence = max(0.0, min(100.0, round(base_conf + trend_bonus + sent_bonus + data_bonus, 1)))
+        confidence = max(0.0, min(100.0), round(base_conf + trend_bonus + sent_bonus + data_bonus, 1))
         conf_line = f"✅ *Confidence:* {confidence:.1f}%"
     except Exception as e:
         confidence = 0.0
-        conf_line = f"⚠️ Confidence error: {e}"
+        conf_line = f"⚠️ Confidence calc error: {e}"
 
-    # 9️⃣ Build WhatsApp message
+    # 9) ATR-based Trade Levels (only for BUY/SELL, not for neutral)
+    trade_levels = sg.compute_trade_levels(df, decision)
+    if trade_levels:
+        tl_lines = [
+            f"🎯 *Entry:* {trade_levels['entry']}",
+            f"🛡️ *Stop:* {trade_levels['stop']}",
+            f"🎯 *TP1:* {trade_levels['tp1']} | 🎯 *TP2:* {trade_levels['tp2']}",
+            f"🧮 ATR(14): {trade_levels['atr']} | R:R = {trade_levels['rr']} | {trade_levels['direction']}",
+        ]
+    else:
+        tl_lines = []
+
+    # 10) Build WhatsApp message
     lines = [
         f"📈 *{symbol}*",
         f"Tech Signal: {tech_signal:+.2f}",
@@ -87,43 +94,8 @@ def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
         f"{trend_summary}",
         f"{conf_line}",
     ]
+    if tl_lines:
+        lines.append("")  # blank line
+        lines.extend(tl_lines)
+
     return ("\n".join(lines), decision, confidence)
-
-# ─────────────────────────────────────────────
-# Decide whether to send alert
-# ─────────────────────────────────────────────
-def should_alert(decision_text: str, confidence_pct: float, min_conf: float = MIN_CONF) -> bool:
-    """
-    Only send alerts if not neutral (🟡) and confidence ≥ min_conf.
-    """
-    if not decision_text:
-        return False
-    if decision_text.strip().startswith("🟡"):
-        return False
-    return confidence_pct >= float(min_conf)
-
-# ─────────────────────────────────────────────
-# Run once for all symbols
-# ─────────────────────────────────────────────
-def run_once(symbols: List[str], send_whatsapp: bool = True) -> None:
-    info(f"Symbols: {', '.join(symbols)}")
-    for sym in symbols:
-        try:
-            result = analyze_symbol(sym)
-            if not result:
-                continue
-
-            msg, decision, conf = result
-            print(msg)
-
-            if send_whatsapp and should_alert(decision, conf, MIN_CONF):
-                try:
-                    send_whatsapp_alert(msg)
-                except Exception as e:
-                    err(f"WhatsApp send failed: {e}")
-            else:
-                print(f"ℹ️ Skipping {sym}: decision='{decision[:12]}...', confidence={conf:.1f}% (< {MIN_CONF:.1f}% یا neutral)")
-        except KeyboardInterrupt:
-            raise
-        except Exception as e:
-            err(f"Error analyzing {sym}: {e}")

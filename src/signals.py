@@ -73,6 +73,96 @@ def compute_technicals(df: pd.DataFrame) -> Dict[str, Any]:
         "sma_trend": sma_trend,
         "signal": tech_signal,
     }
+# ───────────────────────────────
+# 🎯 TRADE LEVELS: Entry / Stop / Targets
+# ATR-based levels with configurable risk-reward
+# ───────────────────────────────
+import math
+from typing import Dict, Optional
+
+def _round_price(x: float) -> float:
+    """
+    Round price smartly based on magnitude to get clean levels for crypto.
+    """
+    if x <= 0:
+        return x
+    if x >= 1000:
+        return round(x, 1)
+    if x >= 100:
+        return round(x, 2)
+    if x >= 10:
+        return round(x, 3)
+    if x >= 1:
+        return round(x, 4)
+    return round(x, 6)
+
+def compute_trade_levels(df: pd.DataFrame,
+                         decision_text: str,
+                         atr_window: int = 14,
+                         atr_mult: float = 1.5,
+                         rr1: float = 1.0,
+                         rr2: float = 2.0) -> Optional[Dict[str, float]]:
+    """
+    Calculates ATR-based entry/stop-loss/targets.
+    - decision_text: use first emoji to infer long/short (🟢 long, 🔴 short). 🟡 returns None.
+    - entry = last close
+    - stop = entry ± atr_mult * ATR(14)
+    - tp1, tp2 = R:R × risk distance
+    """
+    try:
+        # decision guard
+        if not decision_text or decision_text.strip().startswith("🟡"):
+            return None
+
+        # Check data
+        if df is None or df.empty:
+            return None
+        for col in ("High", "Low", "Close"):
+            if col not in df.columns:
+                return None
+
+        close = float(df["Close"].iloc[-1])
+
+        # ATR(14)
+        atr = ta.volatility.AverageTrueRange(
+            high=df["High"], low=df["Low"], close=df["Close"], window=atr_window
+        ).average_true_range().iloc[-1]
+        atr = float(atr) if not math.isnan(atr) else 0.0
+        if atr <= 0:
+            return None
+
+        long_side = decision_text.strip().startswith("🟢")
+        short_side = decision_text.strip().startswith("🔴")
+
+        entry = close
+
+        if long_side:
+            stop = entry - atr_mult * atr
+            risk_per_unit = entry - stop
+            tp1 = entry + rr1 * risk_per_unit
+            tp2 = entry + rr2 * risk_per_unit
+        elif short_side:
+            stop = entry + atr_mult * atr
+            risk_per_unit = stop - entry
+            tp1 = entry - rr1 * risk_per_unit
+            tp2 = entry - rr2 * risk_per_unit
+        else:
+            return None
+
+        levels = {
+            "entry": _round_price(entry),
+            "stop": _round_price(stop),
+            "tp1": _round_price(tp1),
+            "tp2": _round_price(tp2),
+            "atr": round(atr, 4),
+            "rr": f"{rr1}:{rr2}",
+            "direction": "LONG" if long_side else "SHORT",
+        }
+        return levels
+    except Exception as e:
+        print(f"⚠️ Trade levels error: {e}")
+        return None
+
 def fundamentals_to_score(fundamentals: dict) -> float:
     """
     Convert fundamentals dict (PE, EPS, etc) into a score between -1 and 1.
