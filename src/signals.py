@@ -401,3 +401,180 @@ def risk_level_from_factors(tech_signal: float, sentiment: float, fundamentals: 
             return "🔴 *High Risk* — Volatile market ahead ⚡️"
     except Exception as e:
         return f"⚠️ Risk calculation error: {e}"
+# ───────────────────────────────
+# 🎯 TRADE ENGINE: Entry / Stop / Targets / Trailing / Reversal
+# ───────────────────────────────
+import math
+from typing import Dict, Optional
+import numpy as np
+import pandas as pd
+import ta
+
+def _round_price(x: float) -> float:
+    """
+    Round price smartly for crypto pairs.
+    """
+    if x <= 0:
+        return x
+    if x >= 1000:
+        return round(x, 1)
+    if x >= 100:
+        return round(x, 2)
+    if x >= 10:
+        return round(x, 3)
+    if x >= 1:
+        return round(x, 4)
+    return round(x, 6)
+
+# ───────────────────────────────
+# 1️⃣ Entry / Stop / Targets (ATR-based)
+# ───────────────────────────────
+def compute_trade_levels(df: pd.DataFrame,
+                         decision_text: str,
+                         atr_window: int = 14,
+                         atr_mult: float = 1.5,
+                         rr1: float = 1.0,
+                         rr2: float = 2.0) -> Optional[Dict[str, float]]:
+    """
+    Calculates ATR-based entry/stop-loss/targets for BUY/SELL signals.
+    """
+    try:
+        if not decision_text or decision_text.strip().startswith("🟡"):
+            return None
+
+        if df is None or df.empty:
+            return None
+        for col in ("High", "Low", "Close"):
+            if col not in df.columns:
+                return None
+
+        close = float(df["Close"].iloc[-1])
+
+        # ATR(14)
+        atr = ta.volatility.AverageTrueRange(
+            high=df["High"], low=df["Low"], close=df["Close"], window=atr_window
+        ).average_true_range().iloc[-1]
+        atr = float(atr) if not math.isnan(atr) else 0.0
+        if atr <= 0:
+            return None
+
+        long_side = decision_text.strip().startswith("🟢")
+        short_side = decision_text.strip().startswith("🔴")
+
+        entry = close
+
+        if long_side:
+            stop = entry - atr_mult * atr
+            risk_per_unit = entry - stop
+            tp1 = entry + rr1 * risk_per_unit
+            tp2 = entry + rr2 * risk_per_unit
+        elif short_side:
+            stop = entry + atr_mult * atr
+            risk_per_unit = stop - entry
+            tp1 = entry - rr1 * risk_per_unit
+            tp2 = entry - rr2 * risk_per_unit
+        else:
+            return None
+
+        return {
+            "entry": _round_price(entry),
+            "stop": _round_price(stop),
+            "tp1": _round_price(tp1),
+            "tp2": _round_price(tp2),
+            "atr": round(atr, 4),
+            "rr": f"{rr1}:{rr2}",
+            "direction": "LONG" if long_side else "SHORT",
+        }
+    except Exception as e:
+        print(f"⚠️ Trade levels error: {e}")
+        return None
+
+# ───────────────────────────────
+# 2️⃣ Trailing Stop Logic
+# ───────────────────────────────
+def compute_trailing_stop(current_price: float,
+                          trade_info: Dict[str, float],
+                          trail_pct: float = 0.8) -> Optional[float]:
+    """
+    Dynamically adjusts stop-loss after TP1 hit.
+    trail_pct = 0.8 means stop follows 80% of move after TP1.
+    """
+    try:
+        if not trade_info:
+            return None
+
+        entry = trade_info.get("entry")
+        stop = trade_info.get("stop")
+        tp1 = trade_info.get("tp1")
+        direction = trade_info.get("direction")
+
+        if not all([entry, stop, tp1, direction]):
+            return None
+
+        if direction == "LONG":
+            if current_price > tp1:
+                move = current_price - entry
+                new_stop = entry + trail_pct * move
+                return _round_price(new_stop)
+        elif direction == "SHORT":
+            if current_price < tp1:
+                move = entry - current_price
+                new_stop = entry - trail_pct * move
+                return _round_price(new_stop)
+        return None
+    except Exception as e:
+        print(f"⚠️ Trailing stop error: {e}")
+        return None
+
+# ───────────────────────────────
+# 3️⃣ Reversal Probability
+# ───────────────────────────────
+def compute_reversal_probability(df: pd.DataFrame,
+                                 decision_text: str,
+                                 atr_mult: float = 1.5) -> Optional[float]:
+    """
+    Estimates probability (0–100%) that price will reverse soon.
+    Factors:
+    - Distance to ATR band
+    - RSI extremes (>=70 or <=30)
+    - Candle size vs ATR
+    """
+    try:
+        if df is None or df.empty:
+            return None
+        close = float(df["Close"].iloc[-1])
+        high = float(df["High"].iloc[-1])
+        low = float(df["Low"].iloc[-1])
+
+        atr = ta.volatility.AverageTrueRange(
+            high=df["High"], low=df["Low"], close=df["Close"], window=14
+        ).average_true_range().iloc[-1]
+        atr = float(atr) if not math.isnan(atr) else 0.0
+        if atr <= 0:
+            return None
+
+        # RSI for overbought/oversold
+        rsi = ta.momentum.RSIIndicator(df["Close"], window=14).rsi().iloc[-1]
+        rsi = float(rsi) if not math.isnan(rsi) else 50.0
+
+        # Candle range and position
+        range_size = high - low
+        distance_from_close = abs(close - (high + low) / 2)
+
+        # Reversal pressure
+        pressure = 0.0
+        if range_size > atr * 1.2:
+            pressure += 25
+        if rsi >= 70 or rsi <= 30:
+            pressure += 35
+        if distance_from_close > 0.5 * atr:
+            pressure += 20
+        if "🟢" in decision_text and rsi >= 65:
+            pressure += 10
+        if "🔴" in decision_text and rsi <= 35:
+            pressure += 10
+
+        return round(min(100, pressure), 1)
+    except Exception as e:
+        print(f"⚠️ Reversal probability error: {e}")
+        return None

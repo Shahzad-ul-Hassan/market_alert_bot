@@ -1,101 +1,74 @@
 def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
     """
-    Analyze one symbol and return tuple:
-      (pretty_message, decision_text, confidence_pct)
-    Includes Decision, Risk, Trend, Confidence, and ATR-based Trade Levels.
+    Full market analysis with:
+    - Decision, Risk, Trend, Confidence
+    - ATR-based Entry/Stops/Targets
+    - Trailing Stop + Reversal Probability
     """
     info(f"Analyzing {symbol}...")
 
-    # 1) Price data
+    # Price Data
     df = ds.fetch_price_history(symbol)
     if df is None:
-        warn(f"No price data for {symbol}. Skipping.")
+        warn(f"No price data for {symbol}.")
         return None
 
-    # 2) Technicals
     tech = sg.compute_technicals(df)
     tech_signal = float(tech.get("signal", 0.0))
     rsi = tech.get("rsi", None)
     macd_hist = tech.get("macd_hist", 0.0)
     sma_trend = tech.get("sma_trend", 0.0)
 
-    # 3) Sentiment
     sentiment = an.sentiment_from_texts(an.get_recent_news_and_tweets(symbol))
-
-    # 4) Fundamentals
     fund = float(sg.fundamentals_to_score(symbol))
 
-    # 5) Aggregate → Decision
-    score = sg.aggregate_scores(
-        tech_signal=tech_signal,
-        sentiment=sentiment,
-        fundamentals=fund,
-    )
+    score = sg.aggregate_scores(tech_signal, sentiment, fund)
     decision = sg.decision_from_score(score)
+    risk = sg.risk_level_from_factors(tech_signal, sentiment, fund)
 
-    # 6) Risk
-    risk = sg.risk_level_from_factors(
-        tech_signal=tech_signal,
-        sentiment=sentiment,
-        fundamentals=fund,
-    )
-
-    # 7) Trend Summary
-    try:
-        if sma_trend > 0.02 and macd_hist > 0:
-            trend_summary = "📊 *Trend:* Uptrend forming — buyers in control 💪"
-            trend_agree = 1
-        elif sma_trend < -0.02 and macd_hist < 0:
-            trend_summary = "📊 *Trend:* Downtrend likely — sellers dominating 📉"
-            trend_agree = 1
-        else:
-            trend_summary = "📊 *Trend:* Sideways / Consolidation — wait for breakout ⚖️"
-            trend_agree = 0
-    except Exception as e:
-        trend_summary = f"⚠️ Trend analysis error: {e}"
+    # Trend
+    if sma_trend > 0.02 and macd_hist > 0:
+        trend_summary = "📊 Uptrend forming — buyers in control 💪"
+        trend_agree = 1
+    elif sma_trend < -0.02 and macd_hist < 0:
+        trend_summary = "📊 Downtrend likely — sellers dominating 📉"
+        trend_agree = 1
+    else:
+        trend_summary = "⚖️ Sideways / Consolidation"
         trend_agree = 0
 
-    # 8) Confidence % (0–100)
-    try:
-        strength = min(1.0, abs(score))
-        base_conf = 60.0 * strength
-        trend_bonus = 20.0 * trend_agree
-        sent_align = 1.0 if (score * sentiment) > 0 else 0.0
-        sent_bonus = 15.0 * (sent_align * min(1.0, abs(sentiment)))
-        rows = len(df)
-        data_bonus = 10.0 if rows >= 120 else (5.0 if rows >= 60 else 0.0)
-        confidence = max(0.0, min(100.0), round(base_conf + trend_bonus + sent_bonus + data_bonus, 1))
-        conf_line = f"✅ *Confidence:* {confidence:.1f}%"
-    except Exception as e:
-        confidence = 0.0
-        conf_line = f"⚠️ Confidence calc error: {e}"
+    # Confidence %
+    strength = min(1.0, abs(score))
+    conf = max(0.0, min(100.0, round(60 * strength + 20 * trend_agree, 1)))
 
-    # 9) ATR-based Trade Levels (only for BUY/SELL, not for neutral)
-    trade_levels = sg.compute_trade_levels(df, decision)
-    if trade_levels:
-        tl_lines = [
-            f"🎯 *Entry:* {trade_levels['entry']}",
-            f"🛡️ *Stop:* {trade_levels['stop']}",
-            f"🎯 *TP1:* {trade_levels['tp1']} | 🎯 *TP2:* {trade_levels['tp2']}",
-            f"🧮 ATR(14): {trade_levels['atr']} | R:R = {trade_levels['rr']} | {trade_levels['direction']}",
+    # Trade Levels
+    trade = sg.compute_trade_levels(df, decision)
+    if trade:
+        trail = sg.compute_trailing_stop(float(df["Close"].iloc[-1]), trade)
+        rev_prob = sg.compute_reversal_probability(df, decision)
+        levels = [
+            f"🎯 Entry: {trade['entry']}",
+            f"🛡️ Stop: {trade['stop']}",
+            f"🎯 TP1: {trade['tp1']} | 🎯 TP2: {trade['tp2']}",
+            f"🧮 ATR(14): {trade['atr']} | {trade['direction']} | R:R {trade['rr']}",
         ]
+        if trail:
+            levels.append(f"📉 Trailing Stop (live): {trail}")
+        if rev_prob is not None:
+            levels.append(f"🔄 *Reversal Probability:* {rev_prob:.1f}%")
     else:
-        tl_lines = []
+        levels = []
 
-    # 10) Build WhatsApp message
-    lines = [
+    msg = "\n".join([
         f"📈 *{symbol}*",
-        f"Tech Signal: {tech_signal:+.2f}",
-        f"RSI: {rsi} | MACD Hist: {macd_hist} | SMA Trend: {sma_trend:+.2f}",
+        f"Tech Signal: {tech_signal:+.2f} | RSI: {rsi} | MACD: {macd_hist:.4f}",
         f"Sentiment: {sentiment:+.2f} | Fundamentals: {fund:+.2f}",
-        "",
         f"👉 Decision: {decision}",
         f"⚖️ Risk: {risk}",
         f"{trend_summary}",
-        f"{conf_line}",
-    ]
-    if tl_lines:
-        lines.append("")  # blank line
-        lines.extend(tl_lines)
+        f"✅ Confidence: {conf:.1f}%",
+        "",
+        *levels
+    ])
 
-    return ("\n".join(lines), decision, confidence)
+    return msg, decision, conf
