@@ -25,7 +25,7 @@ source venv/bin/activate
 
 ```bash
 pip install -r requirements.txt
-python -m nltk.downloader vader_lexicon
+python3 -m nltk.downloader vader_lexicon
 ```
 
 3) **Configure environment**
@@ -39,11 +39,11 @@ Copy `.env.example` → `.env` and fill values:
 4) **Run**
 
 ```bash
-python -m src.main --symbols-file sample_symbols.txt --interval-min 30
+python3 -m src.main --symbols-file sample_symbols.txt --interval-min 30
 ```
 or
 ```bash
-python -m src.main --symbols AAPL,MSFT,GOOG --once
+python3 -m src.main --symbols AAPL,MSFT,GOOG --once
 ```
 
 ## Notes

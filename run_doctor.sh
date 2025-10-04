@@ -7,9 +7,9 @@ if [ -d "venv" ]; then
 fi
 
 # update pairs before doctor
-python tools/update_pairs.py || true
+python3 tools/update_pairs.py || true
 echo "Pairs updated ✅"
 echo "--------------------------------------------"
 
 # run doctor (health + fix + optional online)
-python tools/bot_doctor.py "$@"
+python3 tools/bot_doctor.py "$@"

@@ -1,5 +1,5 @@
 twilio
-python-dotenv
+python3-dotenv
 yfinance
 pandas
 numpy

@@ -1,1 +1,1 @@
-worker: python -m src.main --interval-min 30
+worker: python3 -m src.main --interval-min 30
