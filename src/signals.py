@@ -269,3 +269,19 @@ def decision_from_score(score: float, buy_th: float = 0.25, sell_th: float = -0.
     if s <= sell_th:
         return "SELL"
     return "NEUTRAL"
+# ───────────────────────────────
+# ❤️ FINAL DECISION SECTION (with emojis)
+# ───────────────────────────────
+def decision_from_score(score: float) -> str:
+    """
+    Converts numeric score into a clear emoji-based decision.
+    """
+    try:
+        if score >= 0.35:
+            return "🟢 *BUY* — Momentum looks strong, trend upward 📈"
+        elif score <= -0.35:
+            return "🔴 *SELL* — Bearish momentum, trend downward 📉"
+        else:
+            return "🟡 *WAIT* — Market uncertain, stay cautious ⚖️"
+    except Exception as e:
+        return f"⚠️ Decision error: {e}"
