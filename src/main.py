@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional, List
 def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
     """
     Full market analysis with:
