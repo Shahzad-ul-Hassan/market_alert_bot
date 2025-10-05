@@ -80,6 +80,64 @@ def analyze_symbol(symbol):
     return msg, decision, confidence
 cat >> src/main.py <<'PY'
 
+def analyze_symbol(symbol):
+    info(f"Analyzing {symbol}...")
+    df = ds.fetch_price_history(symbol)
+    if df is None:
+        warn(f"No data for {symbol}."); return None
+
+    tech = sg.compute_technicals(df)
+    tech_signal = float(tech.get("signal", 0.0))
+    rsi = tech.get("rsi"); macd_hist = tech.get("macd_hist", 0.0); sma_trend = tech.get("sma_trend", 0.0)
+
+    sentiment = an.sentiment_from_texts(an.get_recent_news_and_tweets(symbol))
+    fund = float(sg.fundamentals_to_score(symbol))
+
+    score = sg.aggregate_scores(tech_signal, sentiment, fund)
+    decision = sg.decision_from_score(score)
+    risk = sg.risk_level_from_factors(tech_signal, sentiment, fund)
+
+    if sma_trend > 0.02 and macd_hist > 0:
+        trend = "📊 Uptrend forming — buyers in control 💪"; tflag = 1
+    elif sma_trend < -0.02 and macd_hist < 0:
+        trend = "📊 Downtrend likely — sellers dominating 📉"; tflag = 1
+    else:
+        trend = "⚖️ Sideways / Consolidation"; tflag = 0
+
+    strength = min(1, abs(score))
+    base_conf = 60 * strength
+    trend_bonus = 20 * tflag
+    rows = len(df)
+    data_bonus = 10 if rows >= 120 else (5 if rows >= 60 else 0)
+    conf = max(0.0, min(100.0, round(base_conf + trend_bonus + data_bonus, 1)))
+
+    trade = sg.compute_trade_levels(df, decision)
+    levels = []
+    if trade:
+        trail = sg.compute_trailing_stop(float(df["Close"].iloc[-1]), trade)
+        rev = sg.compute_reversal_probability(df, decision)
+        levels += [
+            f"🎯 Entry: {trade['entry']}",
+            f"🛡️ Stop: {trade['stop']}",
+            f"🎯 TP1: {trade['tp1']} | 🎯 TP2: {trade['tp2']}",
+            f"🧮 ATR(14): {trade['atr']} | {trade['direction']} | R:R {trade['rr']}",
+        ]
+        if trail: levels.append(f"📉 Trailing Stop: {trail}")
+        if rev is not None: levels.append(f"🔄 Reversal Probability: {rev}%")
+
+    msg = "\n".join([
+        f"📈 *{symbol}*",
+        f"Tech:{tech_signal:+.2f} | RSI:{rsi} | MACD:{macd_hist:.4f}",
+        f"Sentiment:{sentiment:+.2f} | Fund:{fund:+.2f}",
+        f"👉 {decision}",
+        f"⚖️ {risk}",
+        f"{trend}",
+        f"✅ Confidence:{conf}%",
+        "",
+        *levels
+    ])
+    return msg, decision, conf
+
 # ---------------- CLI runner (robust defaults) ----------------
 if __name__ == "__main__":
     import argparse
