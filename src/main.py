@@ -78,3 +78,38 @@ def analyze_symbol(symbol):
         *levels
     ])
     return msg, decision, confidence
+cat >> src/main.py <<'PY'
+
+# ---------------- CLI runner (robust defaults) ----------------
+if __name__ == "__main__":
+    import argparse
+    try:
+        from . import main as _self
+    except Exception:
+        _self = None
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--symbols", default="", help="Comma separated e.g. BTC-USD,ETH-USD")
+    parser.add_argument("--symbols-file", default="sample_symbols.txt")
+    parser.add_argument("--interval", type=int, default=1800)
+    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--no-telegram", action="store_true")
+    args = parser.parse_args()
+
+    # Build symbol list (file > inline > defaults)
+    syms = []
+    if args.symbols_file and os.path.exists(args.symbols_file):
+        with open(args.symbols_file) as f:
+            syms = [l.strip() for l in f if l.strip() and not l.strip().startswith("#")]
+    if not syms and args.symbols:
+        syms = [s.strip() for s in args.symbols.split(",") if s.strip()]
+    if not syms:
+        warn("No symbols found — using defaults BTC-USD,ETH-USD")
+        syms = ["BTC-USD", "ETH-USD"]
+
+    try:
+        run_once(syms, send_whatsapp=True)
+    except NameError:
+        from src.main import run_once as _run_once
+        _run_once(syms, send_whatsapp=True)
+PY

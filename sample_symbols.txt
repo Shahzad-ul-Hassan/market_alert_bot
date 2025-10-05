@@ -1,13 +1,13 @@
+# --- Bitcoin-correlated ---
 BTC-USD
-BCH-USD
-BSV-USD
-BTG-USD
 LTC-USD
+BCH-USD
 DASH-USD
+XMR-USD
+
+# --- Ethereum-correlated ---
 ETH-USD
 ETC-USD
 MATIC-USD
+AVAX-USD
 OP-USD
-ARB-USD
-LDO-USD
-
