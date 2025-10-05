@@ -14,6 +14,7 @@ from . import data_sources as ds
 from . import signals as sg
 from . import analysis as an
 from .whatsapp_alert import send_whatsapp_alert
+from .daily_summary import maybe_send_daily_summary
 
 # Min confidence for alerts (env override: CONFIDENCE_MIN=75)
 MIN_CONF = float(os.getenv("CONFIDENCE_MIN", "70"))
@@ -115,7 +116,8 @@ def should_alert(decision_text, confidence_pct, min_conf=MIN_CONF):
 # ─────────────────────────────────────────────
 # Run once over all symbols
 # ─────────────────────────────────────────────
-def run_once(symbols, send_whatsapp=True):
+def run_once(symbols, send_whatsapp=True)
+            maybe_send_daily_summary(symbols, send_func=send_whatsapp_alert):
     info(f"Symbols: {', '.join(symbols)}")
     for sym in symbols:
         try:
@@ -161,7 +163,9 @@ if __name__ == "__main__":
 
     if args.once:
         run_once(symbols, send_whatsapp=True)
+            maybe_send_daily_summary(symbols, send_func=send_whatsapp_alert)
     else:
         while True:
             run_once(symbols, send_whatsapp=True)
+            maybe_send_daily_summary(symbols, send_func=send_whatsapp_alert)
             time.sleep(max(60, args.interval))
