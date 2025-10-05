@@ -14,43 +14,29 @@ from . import data_sources as ds
 from . import signals as sg
 from . import analysis as an
 from .whatsapp_alert import send_whatsapp_alert
-from .daily_summary import maybe_send_daily_summary
 
-# Min confidence for alerts (env override: CONFIDENCE_MIN=75)
 MIN_CONF = float(os.getenv("CONFIDENCE_MIN", "70"))
 
-# ─────────────────────────────────────────────
-# Analyze one symbol fully (Decision + Risk + Trend + Confidence + Levels)
-# ─────────────────────────────────────────────
 def analyze_symbol(symbol):
     info(f"Analyzing {symbol}...")
-    # 1) Price data
     df = ds.fetch_price_history(symbol)
     if df is None:
         warn(f"No price data for {symbol}. Skipping.")
         return None
 
-    # 2) Technicals
     tech = sg.compute_technicals(df)
     tech_signal = float(tech.get("signal", 0.0))
     rsi        = tech.get("rsi", None)
     macd_hist  = tech.get("macd_hist", 0.0)
     sma_trend  = tech.get("sma_trend", 0.0)
 
-    # 3) Sentiment (news + tweets)
     sentiment = an.sentiment_from_texts(an.get_recent_news_and_tweets(symbol))
+    fund      = float(sg.fundamentals_to_score(symbol))
 
-    # 4) Fundamentals (placeholder/API)
-    fund = float(sg.fundamentals_to_score(symbol))
+    score     = sg.aggregate_scores(tech_signal, sentiment, fund)
+    decision  = sg.decision_from_score(score)
+    risk      = sg.risk_level_from_factors(tech_signal, sentiment, fund)
 
-    # 5) Aggregate → Decision
-    score    = sg.aggregate_scores(tech_signal, sentiment, fund)
-    decision = sg.decision_from_score(score)
-
-    # 6) Risk
-    risk = sg.risk_level_from_factors(tech_signal, sentiment, fund)
-
-    # 7) Trend summary
     if sma_trend > 0.02 and macd_hist > 0:
         trend = "📊 Uptrend forming — buyers in control 💪"; tflag = 1
     elif sma_trend < -0.02 and macd_hist < 0:
@@ -58,7 +44,6 @@ def analyze_symbol(symbol):
     else:
         trend = "⚖️ Sideways / Consolidation — wait for breakout"; tflag = 0
 
-    # 8) Confidence %
     strength    = min(1.0, abs(score))
     base_conf   = 60.0 * strength
     trend_bonus = 20.0 * tflag
@@ -66,15 +51,11 @@ def analyze_symbol(symbol):
     data_bonus  = 10.0 if rows >= 120 else (5.0 if rows >= 60 else 0.0)
     confidence  = max(0.0, min(100.0, round(base_conf + trend_bonus + data_bonus, 1)))
 
-    # 9) Trade levels (ATR-based) + trailing + reversal prob
     levels_block = []
     trade = sg.compute_trade_levels(df, decision)
     if trade:
-        try:
-            last_close = float(df["Close"].iloc[-1])
-        except Exception:
-            last_close = None
-        trail   = sg.compute_trailing_stop(last_close, trade) if last_close is not None else None
+        last_close = float(df["Close"].iloc[-1])
+        trail   = sg.compute_trailing_stop(last_close, trade)
         revprob = sg.compute_reversal_probability(df, decision)
 
         levels_block += [
@@ -83,10 +64,9 @@ def analyze_symbol(symbol):
             f"🎯 TP1: {trade['tp1']} | 🎯 TP2: {trade['tp2']}",
             f"🧮 ATR(14): {trade['atr']} | {trade['direction']} | R:R {trade['rr']}",
         ]
-        if trail:   levels_block.append(f"📉 Trailing Stop: {trail}")
-        if revprob is not None: levels_block.append(f"🔄 Reversal Probability: {revprob:.1f}%")
+        if trail:              levels_block.append(f"📉 Trailing Stop: {trail}")
+        if revprob is not None: levels_block.append(f"�� Reversal Probability: {revprob:.1f}%")
 
-    # 10) Pretty message
     lines = [
         f"📈 *{symbol}*",
         f"Tech Signal: {tech_signal:+.2f}",
@@ -103,21 +83,14 @@ def analyze_symbol(symbol):
 
     return "\n".join(lines), decision, confidence
 
-# ─────────────────────────────────────────────
-# Only send non-neutral & high-confidence alerts
-# ─────────────────────────────────────────────
 def should_alert(decision_text, confidence_pct, min_conf=MIN_CONF):
     if not decision_text:
         return False
-    if decision_text.strip().startswith("🟡"):  # skip neutral
+    if decision_text.strip().startswith("🟡"):
         return False
     return float(confidence_pct) >= float(min_conf)
 
-# ─────────────────────────────────────────────
-# Run once over all symbols
-# ─────────────────────────────────────────────
-def run_once(symbols, send_whatsapp=True)
-            maybe_send_daily_summary(symbols, send_func=send_whatsapp_alert):
+def run_once(symbols, send_whatsapp=True):
     info(f"Symbols: {', '.join(symbols)}")
     for sym in symbols:
         try:
@@ -139,9 +112,6 @@ def run_once(symbols, send_whatsapp=True)
         except Exception as e:
             err(f"Error analyzing {sym}: {e}")
 
-# ─────────────────────────────────────────────
-# CLI runner (used by supervisor / Railway)
-# ─────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--symbols", default="", help="Comma-separated e.g. BTC-USD,ETH-USD")
@@ -150,7 +120,6 @@ if __name__ == "__main__":
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
 
-    # Build symbols list: file > inline > defaults
     symbols = []
     if args.symbols_file and os.path.exists(args.symbols_file):
         with open(args.symbols_file) as f:
@@ -163,9 +132,7 @@ if __name__ == "__main__":
 
     if args.once:
         run_once(symbols, send_whatsapp=True)
-            maybe_send_daily_summary(symbols, send_func=send_whatsapp_alert)
     else:
         while True:
             run_once(symbols, send_whatsapp=True)
-            maybe_send_daily_summary(symbols, send_func=send_whatsapp_alert)
             time.sleep(max(60, args.interval))

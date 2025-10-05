@@ -182,78 +182,6 @@ def fundamentals_to_score(fundamentals: dict) -> float:
 
     # clamp in [-1, 1]
     return float(max(-1.0, min(1.0, score)))
-def fundamentals_to_score(fundamentals: dict) -> float:
-    """
-    Convert fundamentals dict (PE, EPS, etc) into a score between -1 and 1.
-    Right now just a basic scoring model.
-    """
-    if not fundamentals:
-        return 0.0
-
-    score = 0.0
-    pe = fundamentals.get("pe_ratio")
-    eps = fundamentals.get("eps")
-
-    # PE ratio logic
-    if pe is not None:
-        if pe < 15:
-            score += 0.3   # undervalued = positive
-        elif pe > 30:
-            score -= 0.3   # overvalued = negative
-
-    # EPS logic
-    if eps is not None:
-        if eps > 0:
-            score += 0.2   # profitable = positive
-        else:
-            score -= 0.2   # loss-making = negative
-
-    # Clamp to [-1, 1]
-    return float(max(-1.0, min(1.0, score)))
-def fundamentals_to_score(snapshot: dict) -> float:
-    """
-    Score fundamentals to [-1, 1].
-    Works with yfinance keys: trailingPE, forwardPE, fiftyTwoWeekHigh/Low.
-    Keeps it simple & robust if fields are missing.
-    """
-    if not snapshot or not isinstance(snapshot, dict):
-        return 0.0
-
-    score = 0.0
-
-    # --- PE (prefer trailing, else forward) ---
-    pe = snapshot.get("trailingPE") or snapshot.get("forwardPE")
-    try:
-        pe = float(pe) if pe is not None else None
-    except Exception:
-        pe = None
-
-    if pe is not None:
-        if pe < 12:
-            score += 0.40     # very cheap
-        elif pe < 20:
-            score += 0.20     # reasonable
-        elif pe > 35:
-            score -= 0.20     # expensive
-
-    # --- 52-week range context (if close to low → slight positive; near high → slight negative) ---
-    hi = snapshot.get("fiftyTwoWeekHigh")
-    lo = snapshot.get("fiftyTwoWeekLow")
-    try:
-        hi = float(hi) if hi is not None else None
-        lo = float(lo) if lo is not None else None
-    except Exception:
-        hi = lo = None
-
-    if hi is not None and lo is not None and hi > lo:
-        # neutral point mid-range
-        # we don't have current price here, so keep a tiny neutral nudge only if range looks healthy
-        score += 0.05  # light bias
-
-    # clamp
-    if score > 1.0: score = 1.0
-    if score < -1.0: score = -1.0
-    return float(score)
 def aggregate_scores(tech: float, sentiment: float, fundamentals: float) -> float:
     """
     Combine technical, sentiment, and fundamentals scores into a single number [-1, 1].
@@ -270,31 +198,6 @@ def aggregate_scores(tech: float, sentiment: float, fundamentals: float) -> floa
     if score < -1.0:
         score = -1.0
     return float(score)
-def aggregate_scores(tech: float, sentiment: float, fundamentals: float) -> float:
-    """
-    Combine technical, sentiment, and fundamentals scores into a single number [-1, 1].
-    Simple average of available scores.
-    """
-    parts = []
-    if tech is not None:
-        parts.append(float(tech))
-    if sentiment is not None:
-        parts.append(float(sentiment))
-    if fundamentals is not None:
-        parts.append(float(fundamentals))
-
-    if not parts:
-        return 0.0
-
-    score = sum(parts) / len(parts)
-
-    # clamp between -1 and 1
-    if score > 1.0:
-        score = 1.0
-    if score < -1.0:
-        score = -1.0
-
-    return score
 def decision_from_score(score: float, buy_th: float = 0.25, sell_th: float = -0.25) -> str:
     """
     Map the aggregate score to a decision label.
@@ -313,71 +216,8 @@ def decision_from_score(score: float, buy_th: float = 0.25, sell_th: float = -0.
         return "SELL"
     return "NEUTRAL"
 
-def fundamentals_to_score(snapshot: dict) -> float:
-    """Convert fundamentals snapshot (like PE, EPS, 52-week) to a score."""
-    if not snapshot or not isinstance(snapshot, dict):
-        return 0.0
-    score = 0.0
-    pe = snapshot.get("trailingPE") or snapshot.get("forwardPE")
-    try:
-        pe = float(pe) if pe is not None else None
-    except Exception:
-        pe = None
-    if pe is not None:
-        if pe < 12:
-            score += 0.40
-        elif pe < 20:
-            score += 0.20
-        elif pe > 35:
-            score -= 0.20
-    hi = snapshot.get("fiftyTwoWeekHigh")
-    lo = snapshot.get("fiftyTwoWeekLow")
-    try:
-        hi = float(hi) if hi is not None else None
-        lo = float(lo) if lo is not None else None
-    except Exception:
-        hi = lo = None
-    if hi and lo and hi > lo:
-        score += 0.05
-    return max(-1.0, min(1.0, score))
 
-def aggregate_scores(tech: float, sentiment: float, fundamentals: float) -> float:
-    """Average of technical, sentiment and fundamentals [-1,1]."""
-    parts = [p for p in (tech, sentiment, fundamentals) if p is not None]
-    if not parts:
-        return 0.0
-    score = sum(parts) / len(parts)
-    return max(-1.0, min(1.0, score))
 
-def decision_from_score(score: float, buy_th: float = 0.25, sell_th: float = -0.25) -> str:
-    """Convert score to BUY/SELL/NEUTRAL."""
-    if score is None:
-        return "NEUTRAL"
-    s = float(score)
-    if s >= buy_th:
-        return "BUY"
-    if s <= sell_th:
-        return "SELL"
-    return "NEUTRAL"
-# ───────────────────────────────
-# ❤️ FINAL DECISION SECTION (with emojis)
-# ───────────────────────────────
-def decision_from_score(score: float) -> str:
-    """
-    Converts numeric score into a clear emoji-based decision.
-    """
-    try:
-        if score >= 0.35:
-            return "🟢 *BUY* — Momentum looks strong, trend upward 📈"
-        elif score <= -0.35:
-            return "🔴 *SELL* — Bearish momentum, trend downward 📉"
-        else:
-            return "🟡 *WAIT* — Market uncertain, stay cautious ⚖️"
-    except Exception as e:
-        return f"⚠️ Decision error: {e}"
-# ───────────────────────────────
-# ⚖️ RISK LEVEL ANALYSIS SECTION
-# ───────────────────────────────
 def risk_level_from_factors(tech_signal: float, sentiment: float, fundamentals: float) -> str:
     """
     Evaluates combined risk level using volatility and sentiment balance.
@@ -410,88 +250,6 @@ import numpy as np
 import pandas as pd
 import ta
 
-def _round_price(x: float) -> float:
-    """
-    Round price smartly for crypto pairs.
-    """
-    if x <= 0:
-        return x
-    if x >= 1000:
-        return round(x, 1)
-    if x >= 100:
-        return round(x, 2)
-    if x >= 10:
-        return round(x, 3)
-    if x >= 1:
-        return round(x, 4)
-    return round(x, 6)
-
-# ───────────────────────────────
-# 1️⃣ Entry / Stop / Targets (ATR-based)
-# ───────────────────────────────
-def compute_trade_levels(df: pd.DataFrame,
-                         decision_text: str,
-                         atr_window: int = 14,
-                         atr_mult: float = 1.5,
-                         rr1: float = 1.0,
-                         rr2: float = 2.0) -> Optional[Dict[str, float]]:
-    """
-    Calculates ATR-based entry/stop-loss/targets for BUY/SELL signals.
-    """
-    try:
-        if not decision_text or decision_text.strip().startswith("🟡"):
-            return None
-
-        if df is None or df.empty:
-            return None
-        for col in ("High", "Low", "Close"):
-            if col not in df.columns:
-                return None
-
-        close = float(df["Close"].iloc[-1])
-
-        # ATR(14)
-        atr = ta.volatility.AverageTrueRange(
-            high=df["High"], low=df["Low"], close=df["Close"], window=atr_window
-        ).average_true_range().iloc[-1]
-        atr = float(atr) if not math.isnan(atr) else 0.0
-        if atr <= 0:
-            return None
-
-        long_side = decision_text.strip().startswith("🟢")
-        short_side = decision_text.strip().startswith("🔴")
-
-        entry = close
-
-        if long_side:
-            stop = entry - atr_mult * atr
-            risk_per_unit = entry - stop
-            tp1 = entry + rr1 * risk_per_unit
-            tp2 = entry + rr2 * risk_per_unit
-        elif short_side:
-            stop = entry + atr_mult * atr
-            risk_per_unit = stop - entry
-            tp1 = entry - rr1 * risk_per_unit
-            tp2 = entry - rr2 * risk_per_unit
-        else:
-            return None
-
-        return {
-            "entry": _round_price(entry),
-            "stop": _round_price(stop),
-            "tp1": _round_price(tp1),
-            "tp2": _round_price(tp2),
-            "atr": round(atr, 4),
-            "rr": f"{rr1}:{rr2}",
-            "direction": "LONG" if long_side else "SHORT",
-        }
-    except Exception as e:
-        print(f"⚠️ Trade levels error: {e}")
-        return None
-
-# ───────────────────────────────
-# 2️⃣ Trailing Stop Logic
-# ───────────────────────────────
 def compute_trailing_stop(current_price: float,
                           trade_info: Dict[str, float],
                           trail_pct: float = 0.8) -> Optional[float]:
@@ -587,68 +345,6 @@ import numpy as np
 import pandas as pd
 import ta
 
-def _round_price(x: float) -> float:
-    if x <= 0: return x
-    if x >= 1000: return round(x, 1)
-    if x >= 100:  return round(x, 2)
-    if x >= 10:   return round(x, 3)
-    if x >= 1:    return round(x, 4)
-    return round(x, 6)
 
-def compute_trade_levels(df, decision_text, atr_window=14, atr_mult=1.5, rr1=1.0, rr2=2.0):
-    try:
-        if not decision_text or decision_text.strip().startswith("🟡"): return None
-        if df is None or df.empty: return None
-        for c in ("High","Low","Close"):
-            if c not in df.columns: return None
-        close=float(df["Close"].iloc[-1])
-        atr=ta.volatility.AverageTrueRange(high=df["High"],low=df["Low"],close=df["Close"],window=atr_window).average_true_range().iloc[-1]
-        atr=float(atr) if not math.isnan(atr) else 0.0
-        if atr<=0: return None
-        long_side=decision_text.strip().startswith("🟢")
-        short_side=decision_text.strip().startswith("🔴")
-        entry=close
-        if long_side:
-            stop=entry-atr_mult*atr; risk=entry-stop
-            tp1=entry+rr1*risk; tp2=entry+rr2*risk
-        elif short_side:
-            stop=entry+atr_mult*atr; risk=stop-entry
-            tp1=entry-rr1*risk; tp2=entry-rr2*risk
-        else: return None
-        return {"entry":_round_price(entry),"stop":_round_price(stop),"tp1":_round_price(tp1),"tp2":_round_price(tp2),
-                "atr":round(atr,4),"rr":f"{rr1}:{rr2}","direction":"LONG" if long_side else "SHORT"}
-    except Exception as e:
-        print(f"⚠️ Trade levels error: {e}"); return None
 
-def compute_trailing_stop(current_price,trade_info,trail_pct=0.8):
-    try:
-        if not trade_info: return None
-        entry=trade_info.get("entry"); stop=trade_info.get("stop"); tp1=trade_info.get("tp1"); direction=trade_info.get("direction")
-        if not all([entry,stop,tp1,direction]): return None
-        if direction=="LONG" and current_price>tp1:
-            move=current_price-entry; new_stop=entry+trail_pct*move; return _round_price(new_stop)
-        if direction=="SHORT" and current_price<tp1:
-            move=entry-current_price; new_stop=entry-trail_pct*move; return _round_price(new_stop)
-        return None
-    except Exception as e:
-        print(f"⚠️ Trailing stop error: {e}"); return None
 
-def compute_reversal_probability(df,decision_text,atr_mult=1.5):
-    try:
-        if df is None or df.empty: return None
-        close=float(df["Close"].iloc[-1]); high=float(df["High"].iloc[-1]); low=float(df["Low"].iloc[-1])
-        atr=ta.volatility.AverageTrueRange(high=df["High"],low=df["Low"],close=df["Close"],window=14).average_true_range().iloc[-1]
-        atr=float(atr) if not math.isnan(atr) else 0.0
-        if atr<=0: return None
-        rsi=ta.momentum.RSIIndicator(df["Close"],window=14).rsi().iloc[-1]
-        rsi=float(rsi) if not math.isnan(rsi) else 50.0
-        rng=high-low; dist=abs(close-(high+low)/2)
-        p=0.0
-        if rng>atr*1.2: p+=25
-        if rsi>=70 or rsi<=30: p+=35
-        if dist>0.5*atr: p+=20
-        if "🟢" in decision_text and rsi>=65: p+=10
-        if "🔴" in decision_text and rsi<=35: p+=10
-        return round(min(100,p),1)
-    except Exception as e:
-        print(f"⚠️ Reversal probability error: {e}"); return None
