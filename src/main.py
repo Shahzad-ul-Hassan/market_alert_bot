@@ -1,15 +1,13 @@
-def info(msg: str): print(f"✅ {msg}")
-def warn(msg: str): print(f"⚠️ {msg}")
-def err(msg: str): print(f"❌ {msg}")
-
-from __future__ import annotations
-from typing import Optional, List
-def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
+sed -i '' '1i\
+def info(msg): print(f"✅ {msg}")\ndef warn(msg): print(f"⚠️ {msg}")\ndef err(msg): print(f"❌ {msg}")\
+' main.py
+def analyze_symbol(symbol):
     """
     Full market analysis with:
     - Decision, Risk, Trend, Confidence
     - ATR-based Entry/Stops/Targets
     - Trailing Stop + Reversal Probability
+    Returns: (message_str, decision_text, confidence_pct)
     """
     info(f"Analyzing {symbol}...")
 
@@ -45,14 +43,19 @@ def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
 
     # Confidence %
     strength = min(1.0, abs(score))
-    conf = max(0.0, min(100.0, round(60 * strength + 20 * trend_agree, 1)))
+    base_conf = 60.0 * strength
+    trend_bonus = 20.0 * trend_agree
+    rows = len(df)
+    data_bonus = 10.0 if rows >= 120 else (5.0 if rows >= 60 else 0.0)
+    confidence = max(0.0, min(100.0, round(base_conf + trend_bonus + data_bonus, 1)))
 
-    # Trade Levels
+    # Trade Levels + trailing + reversal prob
     trade = sg.compute_trade_levels(df, decision)
+    levels = []
     if trade:
         trail = sg.compute_trailing_stop(float(df["Close"].iloc[-1]), trade)
         rev_prob = sg.compute_reversal_probability(df, decision)
-        levels = [
+        levels += [
             f"🎯 Entry: {trade['entry']}",
             f"🛡️ Stop: {trade['stop']}",
             f"🎯 TP1: {trade['tp1']} | 🎯 TP2: {trade['tp2']}",
@@ -62,8 +65,6 @@ def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
             levels.append(f"📉 Trailing Stop (live): {trail}")
         if rev_prob is not None:
             levels.append(f"🔄 *Reversal Probability:* {rev_prob:.1f}%")
-    else:
-        levels = []
 
     msg = "\n".join([
         f"📈 *{symbol}*",
@@ -72,9 +73,8 @@ def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
         f"👉 Decision: {decision}",
         f"⚖️ Risk: {risk}",
         f"{trend_summary}",
-        f"✅ Confidence: {conf:.1f}%",
+        f"✅ Confidence: {confidence:.1f}%",
         "",
         *levels
     ])
-
-    return msg, decision, conf
+    return msg, decision, confidence
