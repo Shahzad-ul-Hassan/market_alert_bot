@@ -1,3 +1,7 @@
+def info(msg: str): print(f"✅ {msg}")
+def warn(msg: str): print(f"⚠️ {msg}")
+def err(msg: str): print(f"❌ {msg}")
+
 from __future__ import annotations
 from typing import Optional, List
 def analyze_symbol(symbol: str) -> Optional[tuple[str, str, float]]:
