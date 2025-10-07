@@ -1,7 +1,3 @@
-cd ~/Desktop/market_alert_bot
-cp src/main.py src/main.py.bak 2>/dev/null || true
-
-cat > src/main.py <<'PY'
 from __future__ import annotations
 import os, time, argparse
 
@@ -140,4 +136,3 @@ if __name__ == "__main__":
         while True:
             run_once(symbols, send_whatsapp=True)
             time.sleep(max(60, args.interval))
-PY
