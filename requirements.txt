@@ -1,10 +1,9 @@
-twilio
-python-dotenv
+requests
 yfinance
+ta
 pandas
 numpy
-ta
-tqdm
-requests
-pytz
+twilio
+python-dotenv
 nltk
+textblob

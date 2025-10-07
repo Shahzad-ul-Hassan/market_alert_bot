@@ -1,6 +1,3 @@
-import requests
-from typing import Optional
-
 def send_telegram_message(bot_token: str, chat_id: str, text: str, parse_mode: Optional[str] = "Markdown"):
     if not bot_token or not chat_id:
         return False
